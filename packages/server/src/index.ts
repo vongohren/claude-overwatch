@@ -1,12 +1,18 @@
 // Claude Overwatch Server
 // Receives hook events and maintains session state
 
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 import { broadcaster } from "./broadcaster.js";
 import { scanner } from "./scanner.js";
 import { store } from "./store.js";
 import type { HookEvent } from "./types.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export const PORT = 3142;
 
@@ -32,6 +38,22 @@ fastify.after(() => {
     broadcaster.addClient(socket);
   });
 });
+
+// Serve dashboard static files
+const dashboardDistPath = join(__dirname, "../../dashboard/dist");
+if (existsSync(dashboardDistPath)) {
+  fastify.register(fastifyStatic, {
+    root: dashboardDistPath,
+    prefix: "/",
+  });
+
+  // SPA fallback - serve index.html for unmatched routes
+  fastify.setNotFoundHandler(async (_request, reply) => {
+    return reply.sendFile("index.html");
+  });
+} else {
+  fastify.log.warn("Dashboard not built yet. Run 'bun run build' first.");
+}
 
 // Set up broadcaster with session getter
 broadcaster.setGetSessionsFn(() => {
