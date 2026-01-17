@@ -38,3 +38,6 @@ coverage/
 # Temp
 tmp/
 .tmp/
+
+# Claude Code
+.claude/settings.local.json

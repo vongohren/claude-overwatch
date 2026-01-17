@@ -1,0 +1,33 @@
+{
+  "name": "claude-overwatch",
+  "version": "0.1.0",
+  "description": "A system-wide monitoring dashboard for all active Claude Code sessions",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/server",
+    "packages/dashboard",
+    "packages/cli"
+  ],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "build": "bun run --filter '*' build",
+    "lint": "biome lint ./packages",
+    "lint:fix": "biome lint --write ./packages",
+    "format": "biome format --write ./packages",
+    "format:check": "biome format ./packages",
+    "check": "biome check ./packages",
+    "check:fix": "biome check --write ./packages",
+    "setup": "bun scripts/setup.js",
+    "start": "bun run --filter server start"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vongohren/claude-overwatch.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0"
+  }
+}
