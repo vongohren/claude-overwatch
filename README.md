@@ -65,6 +65,31 @@ npm run dev
 npm run build
 ```
 
+## Roadmap
+
+### [v0.1 - MVP](https://github.com/vongohren/claude-overwatch/milestone/1)
+Core session monitoring with web dashboard.
+- Project scaffolding and monorepo setup
+- Hook script and global configuration
+- Basic server with event handling
+- Session scanner for existing sessions
+- SQLite persistence
+- WebSocket real-time updates
+- Web dashboard with session list
+
+### [v0.2 - Intelligence](https://github.com/vongohren/claude-overwatch/milestone/2)
+Cross-session intelligence and terminal navigation.
+- File tracking and relationship detection
+- Terminal window navigation (Warp/Ghostty)
+- Session grouping and context export
+
+### [v1.0 - Polish](https://github.com/vongohren/claude-overwatch/milestone/3)
+DX improvements and production-ready release.
+- Zero-friction setup experience
+- CLI for quick terminal status check
+
+See [all issues](https://github.com/vongohren/claude-overwatch/issues) for detailed task breakdown.
+
 ## License
 
 MIT
