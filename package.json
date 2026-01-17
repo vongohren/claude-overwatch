@@ -19,7 +19,7 @@
     "check": "biome check ./packages",
     "check:fix": "biome check --write ./packages",
     "setup": "bun scripts/setup.js",
-    "start": "bun run --filter server start"
+    "start": "bun run --filter '@claude-overwatch/server' start"
   },
   "repository": {
     "type": "git",
