@@ -2,6 +2,12 @@
 
 export type SessionStatus = "active" | "idle" | "stale" | "ended";
 
+export type PendingState =
+  | "permission_prompt"
+  | "idle_prompt"
+  | "elicitation_dialog"
+  | null;
+
 export interface SessionResponse {
   id: string;
   projectPath: string;
@@ -12,6 +18,8 @@ export interface SessionResponse {
   lastToolInput: string;
   startedAt: string;
   transcriptPath: string;
+  pendingState: PendingState;
+  pendingMessage: string;
 }
 
 export type ServerMessage =

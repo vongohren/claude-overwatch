@@ -14,11 +14,13 @@ function getElement(id: string): HTMLElement {
   return el;
 }
 
+export type FilterType = SessionStatus | "all" | "not-ended";
+
 class Dashboard {
   private sessions: Map<string, SessionResponse> = new Map();
   private ws: OverwatchWebSocket;
   private connected = false;
-  private filter: SessionStatus | "all" = "all";
+  private filter: FilterType = "not-ended";
   private searchQuery = "";
   private updateInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -57,7 +59,7 @@ class Dashboard {
     this.filterBar.addEventListener("change", (e) => {
       const target = e.target as HTMLSelectElement;
       if (target.id === "status-filter") {
-        this.filter = target.value as SessionStatus | "all";
+        this.filter = target.value as FilterType;
         this.renderSessionList();
       }
     });
@@ -154,7 +156,9 @@ class Dashboard {
     let sessions = Array.from(this.sessions.values());
 
     // Filter by status
-    if (this.filter !== "all") {
+    if (this.filter === "not-ended") {
+      sessions = sessions.filter((s) => s.status !== "ended");
+    } else if (this.filter !== "all") {
       sessions = sessions.filter((s) => s.status === this.filter);
     }
 

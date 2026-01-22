@@ -8,9 +8,10 @@ import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 import { broadcaster } from "./broadcaster.js";
+import { db } from "./db.js";
 import { scanner } from "./scanner.js";
 import { store } from "./store.js";
-import type { HookEvent } from "./types.js";
+import type { HookEvent, PermissionRequest } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -129,14 +130,37 @@ function processEvent(event: HookEvent): void {
     }
 
     case "notification": {
-      // Just update activity for now
       const session = store.getSession(sessionId);
-      if (session) {
-        store.updateActivity(
-          sessionId,
-          session.lastTool,
-          session.lastToolInput,
+      if (!session) {
+        // Session doesn't exist, create it first
+        const cwd = event.cwd || process.cwd();
+        const transcriptPath = event.transcript_path || "";
+        store.createSession(sessionId, cwd, transcriptPath);
+      }
+
+      // Check for pending state notifications
+      const notificationType = event.notification_type;
+      if (
+        notificationType === "permission_prompt" ||
+        notificationType === "idle_prompt" ||
+        notificationType === "elicitation_dialog"
+      ) {
+        const message = event.message || "";
+        store.setPendingState(sessionId, notificationType, message);
+        fastify.log.info(
+          { sessionId, notificationType },
+          "Session awaiting approval",
         );
+      } else {
+        // Regular notification, just update activity
+        const currentSession = store.getSession(sessionId);
+        if (currentSession) {
+          store.updateActivity(
+            sessionId,
+            currentSession.lastTool,
+            currentSession.lastToolInput,
+          );
+        }
         fastify.log.debug({ sessionId }, "Notification received");
       }
       break;
@@ -151,6 +175,10 @@ function processEvent(event: HookEvent): void {
 fastify.post<{ Body: HookEvent }>("/events", async (request, reply) => {
   try {
     const event = request.body;
+
+    // Log raw event for debugging before any processing
+    db.logRawEvent(event, "/events", event.session_id, event.eventType);
+
     fastify.log.debug({ event }, "Received event");
     processEvent(event);
     return reply.status(200).send({ ok: true });
@@ -209,11 +237,152 @@ fastify.get("/health", async (_request, reply) => {
   });
 });
 
+// Permission analytics endpoints
+
+// GET /analytics/permissions - Get permission request analytics summary
+fastify.get("/analytics/permissions", async (_request, reply) => {
+  const analytics = store.getPermissionAnalytics();
+  const recentRequests = store.getPermissionRequests(20);
+  return reply.send({
+    ...analytics,
+    recentRequests: recentRequests.map((r) => ({
+      id: r.id,
+      sessionId: r.sessionId,
+      projectPath: r.projectPath,
+      projectName: r.projectName,
+      toolName: r.toolName,
+      toolInput: r.toolInput,
+      message: r.message,
+      requestedAt: r.requestedAt.toISOString(),
+      resolvedAt: r.resolvedAt?.toISOString() || null,
+      resolution: r.resolution,
+    })),
+  });
+});
+
+// GET /analytics/permissions/requests - Get all permission requests
+fastify.get<{
+  Querystring: { limit?: string; tool?: string; project?: string };
+}>("/analytics/permissions/requests", async (request, reply) => {
+  const limit = request.query.limit
+    ? Number.parseInt(request.query.limit, 10)
+    : 100;
+  const tool = request.query.tool;
+  const project = request.query.project;
+
+  let requests: PermissionRequest[];
+  if (tool) {
+    requests = store.getPermissionRequestsByTool(tool, limit);
+  } else if (project) {
+    requests = store.getPermissionRequestsByProject(project, limit);
+  } else {
+    requests = store.getPermissionRequests(limit);
+  }
+
+  return reply.send(
+    requests.map((r) => ({
+      id: r.id,
+      sessionId: r.sessionId,
+      projectPath: r.projectPath,
+      projectName: r.projectName,
+      toolName: r.toolName,
+      toolInput: r.toolInput,
+      message: r.message,
+      requestedAt: r.requestedAt.toISOString(),
+      resolvedAt: r.resolvedAt?.toISOString() || null,
+      resolution: r.resolution,
+    })),
+  );
+});
+
 // GET /scan - Trigger manual scan
 fastify.post("/scan", async (_request, reply) => {
   const sessions = scanner.scan();
   return reply.send({ ok: true, discovered: sessions.length });
 });
+
+// Debug endpoints for raw event inspection
+
+// GET /debug/events - List all raw events
+fastify.get<{ Querystring: { limit?: string; offset?: string } }>(
+  "/debug/events",
+  async (request, reply) => {
+    const limit = request.query.limit
+      ? Number.parseInt(request.query.limit, 10)
+      : 100;
+    const offset = request.query.offset
+      ? Number.parseInt(request.query.offset, 10)
+      : 0;
+    const events = db.getRawEvents(limit, offset);
+    return reply.send({
+      count: events.length,
+      events: events.map((e) => ({
+        id: e.id,
+        receivedAt: e.received_at,
+        endpoint: e.endpoint,
+        sessionId: e.session_id,
+        eventType: e.event_type,
+        payload: JSON.parse(e.payload),
+      })),
+    });
+  },
+);
+
+// GET /debug/events/session/:sessionId - Events for a specific session
+fastify.get<{ Params: { sessionId: string }; Querystring: { limit?: string } }>(
+  "/debug/events/session/:sessionId",
+  async (request, reply) => {
+    const limit = request.query.limit
+      ? Number.parseInt(request.query.limit, 10)
+      : 100;
+    const events = db.getRawEventsBySession(request.params.sessionId, limit);
+    return reply.send({
+      sessionId: request.params.sessionId,
+      count: events.length,
+      events: events.map((e) => ({
+        id: e.id,
+        receivedAt: e.received_at,
+        endpoint: e.endpoint,
+        eventType: e.event_type,
+        payload: JSON.parse(e.payload),
+      })),
+    });
+  },
+);
+
+// GET /debug/events/type/:eventType - Events by type
+fastify.get<{ Params: { eventType: string }; Querystring: { limit?: string } }>(
+  "/debug/events/type/:eventType",
+  async (request, reply) => {
+    const limit = request.query.limit
+      ? Number.parseInt(request.query.limit, 10)
+      : 100;
+    const events = db.getRawEventsByType(request.params.eventType, limit);
+    return reply.send({
+      eventType: request.params.eventType,
+      count: events.length,
+      events: events.map((e) => ({
+        id: e.id,
+        receivedAt: e.received_at,
+        endpoint: e.endpoint,
+        sessionId: e.session_id,
+        payload: JSON.parse(e.payload),
+      })),
+    });
+  },
+);
+
+// DELETE /debug/events - Cleanup old raw events
+fastify.delete<{ Querystring: { daysToKeep?: string } }>(
+  "/debug/events",
+  async (request, reply) => {
+    const daysToKeep = request.query.daysToKeep
+      ? Number.parseInt(request.query.daysToKeep, 10)
+      : 7;
+    const deleted = db.cleanupOldRawEvents(daysToKeep);
+    return reply.send({ ok: true, deleted });
+  },
+);
 
 // Start server
 async function start() {

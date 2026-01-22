@@ -1,6 +1,7 @@
 // UI rendering functions for the dashboard
 
-import type { SessionResponse, SessionStatus } from "./types";
+import type { FilterType } from "./index";
+import type { PendingState, SessionResponse, SessionStatus } from "./types";
 
 const STATUS_ICONS: Record<SessionStatus, string> = {
   active: "\u{1F7E2}", // 🟢
@@ -14,6 +15,18 @@ const STATUS_LABELS: Record<SessionStatus, string> = {
   idle: "Idle",
   stale: "Stale",
   ended: "Ended",
+};
+
+const PENDING_ICONS: Record<NonNullable<PendingState>, string> = {
+  permission_prompt: "\u{1F514}", // 🔔
+  idle_prompt: "\u{23F3}", // ⏳
+  elicitation_dialog: "\u{2753}", // ❓
+};
+
+const PENDING_LABELS: Record<NonNullable<PendingState>, string> = {
+  permission_prompt: "Awaiting Permission",
+  idle_prompt: "Awaiting Input",
+  elicitation_dialog: "Awaiting Response",
 };
 
 export function formatTimeAgo(dateStr: string): string {
@@ -68,14 +81,25 @@ export function renderSessionCard(session: SessionResponse): string {
   const projectPath = truncatePath(session.projectPath);
   const lastAction = formatToolAction(session.lastTool, session.lastToolInput);
 
+  const isPending = session.pendingState !== null;
+  const pendingClass = isPending ? " pending-approval" : "";
+  const pendingBadge = isPending
+    ? `<span class="status-badge pending">${PENDING_ICONS[session.pendingState]} ${PENDING_LABELS[session.pendingState]}</span>`
+    : `<span class="status-badge ${session.status}">${statusIcon} ${statusLabel}</span>`;
+  const pendingMessage =
+    isPending && session.pendingMessage
+      ? `<div class="pending-message">${escapeHtml(session.pendingMessage)}</div>`
+      : "";
+
   return `
-    <div class="session-card status-${session.status}" data-session-id="${session.id}">
+    <div class="session-card status-${session.status}${pendingClass}" data-session-id="${session.id}">
       <div class="session-header">
-        <span class="status-indicator" title="${statusLabel}">${statusIcon}</span>
+        ${pendingBadge}
         <span class="project-name">${escapeHtml(session.projectName)}</span>
         <span class="time-ago">${timeAgo}</span>
       </div>
       <div class="session-path">${escapeHtml(projectPath)}</div>
+      ${pendingMessage}
       <div class="session-action">${escapeHtml(lastAction)}</div>
     </div>
   `;
@@ -92,8 +116,16 @@ export function renderSessionList(sessions: SessionResponse[]): string {
     `;
   }
 
-  // Sort by last activity (most recent first), but keep active sessions at top
+  // Sort: pending first, then by status, then by last activity
   const sorted = [...sessions].sort((a, b) => {
+    // Pending sessions always come first
+    const aPending = a.pendingState !== null ? 0 : 1;
+    const bPending = b.pendingState !== null ? 0 : 1;
+    if (aPending !== bPending) {
+      return aPending - bPending;
+    }
+
+    // Then by status
     const statusOrder: Record<SessionStatus, number> = {
       active: 0,
       idle: 1,
@@ -104,6 +136,8 @@ export function renderSessionList(sessions: SessionResponse[]): string {
     if (statusDiff !== 0) {
       return statusDiff;
     }
+
+    // Then by last activity (most recent first)
     return (
       new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
     );
@@ -130,11 +164,12 @@ export function renderHeader(connected: boolean, sessionCount: number): string {
 }
 
 export function renderFilterBar(
-  currentFilter: SessionStatus | "all",
+  currentFilter: FilterType,
   searchQuery: string,
 ): string {
-  const filters: Array<{ value: SessionStatus | "all"; label: string }> = [
-    { value: "all", label: "All" },
+  const filters: Array<{ value: FilterType; label: string }> = [
+    { value: "not-ended", label: "Active Sessions" },
+    { value: "all", label: "All Sessions" },
     { value: "active", label: "🟢 Active" },
     { value: "idle", label: "🟡 Idle" },
     { value: "stale", label: "🔴 Stale" },

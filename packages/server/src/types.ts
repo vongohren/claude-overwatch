@@ -2,6 +2,12 @@
 
 export type SessionStatus = "active" | "idle" | "stale" | "ended";
 
+export type PendingState =
+  | "permission_prompt"
+  | "idle_prompt"
+  | "elicitation_dialog"
+  | null;
+
 export interface Session {
   id: string;
   projectPath: string;
@@ -12,6 +18,8 @@ export interface Session {
   lastToolInput: string;
   startedAt: Date;
   transcriptPath: string;
+  pendingState: PendingState;
+  pendingMessage: string;
 }
 
 export type EventType =
@@ -31,6 +39,7 @@ export interface HookEvent {
   tool_input?: unknown;
   transcript_path?: string;
   message?: string;
+  notification_type?: string;
 }
 
 export interface SessionResponse {
@@ -43,6 +52,45 @@ export interface SessionResponse {
   lastToolInput: string;
   startedAt: string;
   transcriptPath: string;
+  pendingState: PendingState;
+  pendingMessage: string;
+}
+
+// Permission request tracking for analytics
+export type PermissionResolution = "approved" | "denied" | "timeout" | null;
+
+export interface PermissionRequest {
+  id: number;
+  sessionId: string;
+  projectPath: string;
+  projectName: string;
+  toolName: string;
+  toolInput: string;
+  message: string;
+  requestedAt: Date;
+  resolvedAt: Date | null;
+  resolution: PermissionResolution;
+}
+
+export interface PermissionRequestResponse {
+  id: number;
+  sessionId: string;
+  projectPath: string;
+  projectName: string;
+  toolName: string;
+  toolInput: string;
+  message: string;
+  requestedAt: string;
+  resolvedAt: string | null;
+  resolution: PermissionResolution;
+}
+
+export interface PermissionAnalytics {
+  totalRequests: number;
+  byTool: Record<string, number>;
+  byProject: Record<string, number>;
+  byResolution: Record<string, number>;
+  recentRequests: PermissionRequestResponse[];
 }
 
 // WebSocket message types
